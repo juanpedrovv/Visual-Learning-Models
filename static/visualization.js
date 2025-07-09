@@ -662,7 +662,13 @@ class NeuralNetworkVisualization {
         
         // Start progressive animation
         if (trajectoryData.length > 0) {
-            console.log(`Starting progressive animation with ${trajectoryData.length} trajectories`);
+            const classChanges = trajectoryData.filter(t => t.hasClassChange).length;
+            const transitionLabel = this.getTransitionLabel(type);
+            console.log(`Starting next-step progressive animation: ${transitionLabel}`);
+            console.log(`${trajectoryData.length} trajectories, ${classChanges} show class changes`);
+            
+            // Show class change statistics
+            this.showClassChangeStats(trajectoryData, type);
         }
         this.animateProgressiveTrajectories(g, trajectoryData, line, xScale, yScale);
     }
@@ -687,11 +693,21 @@ class NeuralNetworkVisualization {
                 
                 // Only include trajectory if class is active
                 if (this.activeClasses.has(trajectoryClass)) {
+                    // Check if there's a class change along the trajectory
+                    const startClass = trajectoryPoints[0].label;
+                    const endClass = trajectoryPoints[trajectoryPoints.length - 1].label;
+                    const hasClassChange = startClass !== endClass;
+                    
                     trajectories.push({
                         points: trajectoryPoints,
                         class: trajectoryClass,
                         color: this.colorScale(trajectoryClass),
-                        sampleIdx: sampleIdx
+                        sampleIdx: sampleIdx,
+                        hasClassChange: hasClassChange,
+                        startClass: startClass,
+                        endClass: endClass,
+                        startColor: this.colorScale(startClass),
+                        endColor: this.colorScale(endClass)
                     });
                 }
             }
@@ -770,15 +786,40 @@ class NeuralNetworkVisualization {
     
     animateSingleTrajectory(g, trajectoryData, line, xScale, yScale) {
         const pathData = trajectoryData.points.map(p => p.coords);
-        const color = trajectoryData.color;
+        const hasClassChange = trajectoryData.hasClassChange;
+        
+        // Create path element with gradient if there's class change
+        let pathColor, pathElement;
+        
+        if (hasClassChange) {
+            // Create a linear gradient for class transition
+            const gradientId = `gradient-${trajectoryData.sampleIdx}-${Date.now()}`;
+            const defs = g.append('defs');
+            const gradient = defs.append('linearGradient')
+                .attr('id', gradientId)
+                .attr('x1', '0%').attr('y1', '0%')
+                .attr('x2', '100%').attr('y2', '0%');
+            
+            gradient.append('stop')
+                .attr('offset', '0%')
+                .attr('stop-color', trajectoryData.startColor);
+            
+            gradient.append('stop')
+                .attr('offset', '100%')
+                .attr('stop-color', trajectoryData.endColor);
+            
+            pathColor = `url(#${gradientId})`;
+        } else {
+            pathColor = trajectoryData.color;
+        }
         
         // Create path element
         const path = g.append('path')
             .datum(pathData)
             .attr('class', 'trajectory-path')
             .attr('d', line)
-            .attr('stroke', color)
-            .attr('stroke-width', 2)
+            .attr('stroke', pathColor)
+            .attr('stroke-width', hasClassChange ? 2.5 : 2)
             .attr('stroke-opacity', 0)
             .attr('fill', 'none')
             .style('pointer-events', 'none');
@@ -796,28 +837,44 @@ class NeuralNetworkVisualization {
             .duration(this.trajectoryDuration * 0.7)
             .ease(d3.easeQuadInOut)
             .attr('stroke-dashoffset', 0)
-            .attr('stroke-opacity', 0.6);
+            .attr('stroke-opacity', hasClassChange ? 0.8 : 0.6);
         
-        // Add start and end points
+        // Add start point with original class color
         const startPoint = g.append('circle')
             .attr('class', 'trajectory-point start')
             .attr('cx', xScale(trajectoryData.points[0].coords[0]))
             .attr('cy', yScale(trajectoryData.points[0].coords[1]))
             .attr('r', 0)
-            .attr('fill', color)
+            .attr('fill', trajectoryData.startColor)
             .attr('stroke', '#fff')
             .attr('stroke-width', 2)
             .style('pointer-events', 'none');
         
+        // Add end point with final class color (this is the key change!)
         const endPoint = g.append('circle')
             .attr('class', 'trajectory-point end')
             .attr('cx', xScale(trajectoryData.points[trajectoryData.points.length - 1].coords[0]))
             .attr('cy', yScale(trajectoryData.points[trajectoryData.points.length - 1].coords[1]))
             .attr('r', 0)
-            .attr('fill', color)
+            .attr('fill', trajectoryData.endColor) // Use end class color!
             .attr('stroke', '#fff')
-            .attr('stroke-width', 2)
+            .attr('stroke-width', hasClassChange ? 3 : 2) // Thicker border for class changes
             .style('pointer-events', 'none');
+        
+        // Add class change indicator if there's a change
+        let changeIndicator = null;
+        if (hasClassChange) {
+            changeIndicator = g.append('circle')
+                .attr('class', 'trajectory-change-indicator')
+                .attr('cx', xScale(trajectoryData.points[trajectoryData.points.length - 1].coords[0]))
+                .attr('cy', yScale(trajectoryData.points[trajectoryData.points.length - 1].coords[1]))
+                .attr('r', 0)
+                .attr('fill', 'none')
+                .attr('stroke', trajectoryData.endColor)
+                .attr('stroke-width', 2)
+                .attr('stroke-dasharray', '3,3')
+                .style('pointer-events', 'none');
+        }
         
         // Animate points
         startPoint.transition()
@@ -828,15 +885,24 @@ class NeuralNetworkVisualization {
         endPoint.transition()
             .delay(this.trajectoryDuration * 0.6)
             .duration(400)
-            .attr('r', 4);
+            .attr('r', hasClassChange ? 5 : 4); // Larger for class changes
         
-        // Add arrow at end if enabled
-        let arrow = null;
-        if (this.showArrows && trajectoryData.points.length > 2) {
-            arrow = this.addTrajectoryArrow(g, trajectoryData.points, xScale, yScale, color);
+        // Animate change indicator
+        if (changeIndicator) {
+            changeIndicator.transition()
+                .delay(this.trajectoryDuration * 0.8)
+                .duration(600)
+                .attr('r', 8)
+                .attr('stroke-opacity', 0.6);
         }
         
-        return { path, startPoint, endPoint, arrow };
+        // Add arrow at end if enabled (use end color)
+        let arrow = null;
+        if (this.showArrows && trajectoryData.points.length > 2) {
+            arrow = this.addTrajectoryArrow(g, trajectoryData.points, xScale, yScale, trajectoryData.endColor);
+        }
+        
+        return { path, startPoint, endPoint, arrow, changeIndicator };
     }
     
     fadeOutTrajectory(trajectory) {
@@ -869,6 +935,14 @@ class NeuralNetworkVisualization {
             trajectory.arrow.transition()
                 .duration(duration)
                 .attr('opacity', 0)
+                .remove();
+        }
+        
+        if (trajectory.changeIndicator) {
+            trajectory.changeIndicator.transition()
+                .duration(duration)
+                .attr('r', 0)
+                .attr('stroke-opacity', 0)
                 .remove();
         }
     }
@@ -1089,6 +1163,93 @@ class NeuralNetworkVisualization {
         }
     }
     
+    showClassChangeStats(trajectoryData, type) {
+        const classChanges = trajectoryData.filter(t => t.hasClassChange);
+        const totalTrajectories = trajectoryData.length;
+        
+        if (classChanges.length === 0) return;
+        
+        // Group changes by transition type
+        const changeStats = {};
+        classChanges.forEach(traj => {
+            const transition = `${traj.startClass} → ${traj.endClass}`;
+            changeStats[transition] = (changeStats[transition] || 0) + 1;
+        });
+        
+        // Create or update stats display
+        let statsElement = document.getElementById('class-change-stats');
+        if (!statsElement) {
+            statsElement = document.createElement('div');
+            statsElement.id = 'class-change-stats';
+            statsElement.className = 'class-change-stats';
+            
+            // Insert after active classes info
+            const activeClassesInfo = document.getElementById('active-classes-info');
+            if (activeClassesInfo) {
+                activeClassesInfo.parentNode.insertBefore(statsElement, activeClassesInfo.nextSibling);
+            }
+        }
+        
+        const changePercent = ((classChanges.length / totalTrajectories) * 100).toFixed(1);
+        const typeLabel = type === 'epoch' ? 'epochs' : 'layers';
+        
+        // Determine transition direction
+        const transitionLabel = this.getTransitionLabel(type);
+        
+        let statsHtml = `
+            <div class="stats-header">
+                🔄 Class Changes: ${transitionLabel}
+            </div>
+            <div class="stats-summary">
+                ${classChanges.length}/${totalTrajectories} points (${changePercent}%) changed classification
+            </div>
+        `;
+        
+        if (Object.keys(changeStats).length > 0) {
+            statsHtml += '<div class="stats-details">';
+            Object.entries(changeStats)
+                .sort(([,a], [,b]) => b - a) // Sort by frequency
+                .slice(0, 5) // Show top 5
+                .forEach(([transition, count]) => {
+                    const [start, end] = transition.split(' → ');
+                    statsHtml += `
+                        <span class="transition-stat">
+                            <span class="class-chip" style="background-color: ${this.colorScale(parseInt(start))}">${start}</span>
+                            →
+                            <span class="class-chip" style="background-color: ${this.colorScale(parseInt(end))}">${end}</span>
+                            (${count})
+                        </span>
+                    `;
+                });
+            statsHtml += '</div>';
+        }
+        
+        statsElement.innerHTML = statsHtml;
+        
+        // Auto-hide after 10 seconds
+        setTimeout(() => {
+            if (statsElement) {
+                statsElement.style.opacity = '0.5';
+            }
+        }, 10000);
+    }
+    
+    getTransitionLabel(type) {
+        if (type === 'epoch') {
+            const currentEpoch = this.currentData.epochs[this.currentEpochIndex];
+            const nextEpochIndex = (this.currentEpochIndex + 1) % this.currentData.epochs.length;
+            const nextEpoch = this.currentData.epochs[nextEpochIndex];
+            const currentLayer = this.currentData.layers[this.currentLayerIndex];
+            return `Epoch ${currentEpoch} → ${nextEpoch} (${currentLayer})`;
+        } else {
+            const currentEpoch = this.currentData.epochs[this.currentEpochIndex];
+            const currentLayer = this.currentData.layers[this.currentLayerIndex];
+            const nextLayerIndex = (this.currentLayerIndex + 1) % this.currentData.layers.length;
+            const nextLayer = this.currentData.layers[nextLayerIndex];
+            return `${currentLayer} → ${nextLayer} (Epoch ${currentEpoch})`;
+        }
+    }
+    
     // Animation methods
     playEpochAnimation() {
         if (!this.currentData) return;
@@ -1147,6 +1308,8 @@ class NeuralNetworkVisualization {
     }
     
     playProgressiveEpochAnimation() {
+        console.log('Progressive Epoch Animation button clicked');
+        
         if (!this.currentData) {
             this.showError('Please load a dataset first');
             return;
@@ -1157,13 +1320,21 @@ class NeuralNetworkVisualization {
         // If already running, stop it
         if (this.trajectoryAnimationId) {
             this.clearTrajectoryAnimation();
-            button.textContent = '🎬 Progressive';
+            button.textContent = '🎬 Next Transition';
             button.classList.remove('stopping');
             return;
         }
         
+        // Get transition info first for button text
+        const currentLayer = this.currentData.layers[this.currentLayerIndex];
+        if (!currentLayer) return;
+        
+        const nextEpochIndex = (this.currentEpochIndex + 1) % this.currentData.epochs.length;
+        const currentEpoch = this.currentData.epochs[this.currentEpochIndex];
+        const nextEpoch = this.currentData.epochs[nextEpochIndex];
+        
         // Force trajectory display and start progressive animation for epoch visualization
-        button.textContent = '⏹️ Stop Progressive';
+        button.textContent = `⏹️ Stop (${currentEpoch}→${nextEpoch})`;
         button.classList.add('stopping');
         
         // Ensure trajectories are enabled
@@ -1173,26 +1344,32 @@ class NeuralNetworkVisualization {
         // Clear any existing animation and start progressive animation for epoch
         this.clearTrajectoryAnimation();
         
-        // Get current epoch data for progressive animation
-        const currentLayer = this.currentData.layers[this.currentLayerIndex];
-        if (!currentLayer) return;
-        
         const reductionMethod = document.querySelector('input[name="reduction"]:checked').value;
         const coordsKey = reductionMethod === 'tsne' ? 'tsne_coords' : 'umap_coords';
         
-        const epochData = this.currentData.epochs.map(epoch => {
-            const key = `epoch_${epoch}_layer_${currentLayer}`;
-            return this.currentData.projections[key];
-        }).filter(d => d);
+        // Get current and next epoch data
+        const currentKey = `epoch_${currentEpoch}_layer_${currentLayer}`;
+        const nextKey = `epoch_${nextEpoch}_layer_${currentLayer}`;
         
-        if (epochData.length > 1) {
+        const currentData = this.currentData.projections[currentKey];
+        const nextData = this.currentData.projections[nextKey];
+        
+        console.log(`Epoch transition: ${currentKey} → ${nextKey}`);
+        console.log('Current data:', currentData ? 'Found' : 'Not found');
+        console.log('Next data:', nextData ? 'Found' : 'Not found');
+        
+        if (currentData && nextData) {
+            const transitionData = [currentData, nextData];
             const g = this.epochSvg.select('g');
-            this.drawProgressiveTrajectories(g, epochData, coordsKey, 'epoch', this.epochXScale, this.epochYScale);
+            this.drawProgressiveTrajectories(g, transitionData, coordsKey, 'epoch', this.epochXScale, this.epochYScale);
+        } else {
+            console.error('Missing data for epoch transition');
+            this.showError(`Cannot find data for transition ${currentEpoch}→${nextEpoch} in layer ${currentLayer}`);
         }
         
         // Store reference to reset button after animation completes
         const resetButton = () => {
-            button.textContent = '🎬 Progressive';
+            button.textContent = '🎬 Next Transition';
             button.classList.remove('stopping');
         };
         
@@ -1201,6 +1378,8 @@ class NeuralNetworkVisualization {
     }
     
     playProgressiveLayerAnimation() {
+        console.log('Progressive Layer Animation button clicked');
+        
         if (!this.currentData) {
             this.showError('Please load a dataset first');
             return;
@@ -1211,13 +1390,21 @@ class NeuralNetworkVisualization {
         // If already running, stop it
         if (this.trajectoryAnimationId) {
             this.clearTrajectoryAnimation();
-            button.textContent = '🎬 Progressive';
+            button.textContent = '🎬 Next Transition';
             button.classList.remove('stopping');
             return;
         }
         
+        // Get transition info first for button text
+        const currentEpoch = this.currentData.epochs[this.currentEpochIndex];
+        if (currentEpoch === undefined) return;
+        
+        const nextLayerIndex = (this.currentLayerIndex + 1) % this.currentData.layers.length;
+        const currentLayer = this.currentData.layers[this.currentLayerIndex];
+        const nextLayer = this.currentData.layers[nextLayerIndex];
+        
         // Force trajectory display and start progressive animation for layer visualization
-        button.textContent = '⏹️ Stop Progressive';
+        button.textContent = `⏹️ Stop (${currentLayer}→${nextLayer})`;
         button.classList.add('stopping');
         
         // Ensure trajectories are enabled
@@ -1227,26 +1414,32 @@ class NeuralNetworkVisualization {
         // Clear any existing animation and start progressive animation for layer
         this.clearTrajectoryAnimation();
         
-        // Get current layer data for progressive animation
-        const currentEpoch = this.currentData.epochs[this.currentEpochIndex];
-        if (currentEpoch === undefined) return;
-        
         const reductionMethod = document.querySelector('input[name="reduction"]:checked').value;
         const coordsKey = reductionMethod === 'tsne' ? 'tsne_coords' : 'umap_coords';
         
-        const layerData = this.currentData.layers.map(layer => {
-            const key = `epoch_${currentEpoch}_layer_${layer}`;
-            return this.currentData.projections[key];
-        }).filter(d => d);
+        // Get current and next layer data
+        const currentKey = `epoch_${currentEpoch}_layer_${currentLayer}`;
+        const nextKey = `epoch_${currentEpoch}_layer_${nextLayer}`;
         
-        if (layerData.length > 1) {
+        const currentData = this.currentData.projections[currentKey];
+        const nextData = this.currentData.projections[nextKey];
+        
+        console.log(`Layer transition: ${currentKey} → ${nextKey}`);
+        console.log('Current data:', currentData ? 'Found' : 'Not found');
+        console.log('Next data:', nextData ? 'Found' : 'Not found');
+        
+        if (currentData && nextData) {
+            const transitionData = [currentData, nextData];
             const g = this.layerSvg.select('g');
-            this.drawProgressiveTrajectories(g, layerData, coordsKey, 'layer', this.layerXScale, this.layerYScale);
+            this.drawProgressiveTrajectories(g, transitionData, coordsKey, 'layer', this.layerXScale, this.layerYScale);
+        } else {
+            console.error('Missing data for layer transition');
+            this.showError(`Cannot find data for transition ${currentLayer}→${nextLayer} in epoch ${currentEpoch}`);
         }
         
         // Store reference to reset button after animation completes
         const resetButton = () => {
-            button.textContent = '🎬 Progressive';
+            button.textContent = '🎬 Next Transition';
             button.classList.remove('stopping');
         };
         

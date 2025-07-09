@@ -332,6 +332,61 @@
             border-left: 4px solid #007bff;
         }
         
+        .class-change-stats {
+            background-color: #fff3cd;
+            border: 1px solid #ffeaa7;
+            border-left: 4px solid #f39c12;
+            border-radius: 5px;
+            padding: 15px;
+            margin-bottom: 15px;
+            transition: opacity 0.5s ease;
+        }
+        
+        .stats-header {
+            font-weight: bold;
+            color: #856404;
+            margin-bottom: 8px;
+            font-size: 14px;
+        }
+        
+        .stats-summary {
+            color: #856404;
+            margin-bottom: 10px;
+            font-size: 13px;
+        }
+        
+        .stats-details {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            align-items: center;
+        }
+        
+        .transition-stat {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            background-color: rgba(255,255,255,0.5);
+            padding: 4px 8px;
+            border-radius: 12px;
+            font-size: 12px;
+            color: #856404;
+            border: 1px solid rgba(133, 100, 4, 0.2);
+        }
+        
+        .class-chip {
+            display: inline-block;
+            width: 18px;
+            height: 18px;
+            border-radius: 50%;
+            text-align: center;
+            line-height: 18px;
+            font-size: 11px;
+            font-weight: bold;
+            color: white;
+            text-shadow: 0 1px 1px rgba(0,0,0,0.3);
+        }
+        
         .metric {
             font-weight: bold;
             color: #333;
@@ -398,6 +453,17 @@
         .trajectory-point.end {
             stroke-width: 3;
             filter: drop-shadow(0 2px 4px rgba(0,0,0,0.3));
+        }
+        
+        .trajectory-change-indicator {
+            filter: drop-shadow(0 1px 3px rgba(0,0,0,0.2));
+            animation: pulse 2s infinite;
+        }
+        
+        @keyframes pulse {
+            0% { stroke-opacity: 0.3; }
+            50% { stroke-opacity: 0.8; }
+            100% { stroke-opacity: 0.3; }
         }
         
         /* Smooth transitions for all elements */
@@ -572,7 +638,7 @@
                     <button id="play-epoch">Play</button>
                     <button id="pause-epoch">Pause</button>
                     <button id="next-epoch" class="next-btn" title="Go to next epoch">⏭️ Next</button>
-                    <button id="play-progressive-epoch" class="progressive-btn" title="Play Progressive Trajectory Animation">🎬 Progressive</button>
+                    <button id="play-progressive-epoch" class="progressive-btn" title="Animate transition to NEXT epoch">🎬 Next Transition</button>
                     <div class="progress-bar">
                         <div class="progress-fill" id="epoch-progress"></div>
                     </div>
@@ -590,7 +656,7 @@
                     <button id="play-layer">Play</button>
                     <button id="pause-layer">Pause</button>
                     <button id="next-layer" class="next-btn" title="Go to next layer">⏭️ Next</button>
-                    <button id="play-progressive-layer" class="progressive-btn" title="Play Progressive Trajectory Animation">🎬 Progressive</button>
+                    <button id="play-progressive-layer" class="progressive-btn" title="Animate transition to NEXT layer">🎬 Next Transition</button>
                     <div class="progress-bar">
                         <div class="progress-fill" id="layer-progress"></div>
                     </div>
