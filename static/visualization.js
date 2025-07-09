@@ -11,7 +11,6 @@ class NeuralNetworkVisualization {
         this.showTrajectories = true;
         this.showArrows = false;
         this.trajectoryAnimationIndex = 0;
-        this.isPlayingTrajectory = false;
         
         // New progressive animation properties
         this.trajectoryAnimationId = null;
@@ -21,10 +20,9 @@ class NeuralNetworkVisualization {
         this.trajectoryFadeTime = 1000; // Time for trajectory to fade out
         this.maxVisibleTrajectories = 15; // Maximum trajectories visible simultaneously
         
-        // Visualization dimensions
-        this.margin = { top: 20, right: 20, bottom: 40, left: 40 };
-        this.width = 500 - this.margin.left - this.margin.right;
-        this.height = 360 - this.margin.bottom - this.margin.top;
+        // Visualization dimensions - responsive
+        this.margin = { top: 20, right: 20, bottom: 50, left: 50 };
+        this.updateDimensions();
         
         this.init();
     }
@@ -33,6 +31,30 @@ class NeuralNetworkVisualization {
         this.setupEventListeners();
         this.loadDatasets();
         this.createTooltip();
+        
+        // Add resize listener for responsive design
+        window.addEventListener('resize', () => {
+            this.updateDimensions();
+            if (this.epochSvg) this.resizeVisualization('epoch');
+            if (this.layerSvg) this.resizeVisualization('layer');
+        });
+    }
+    
+    updateDimensions() {
+        // Get container dimensions dynamically
+        const container = document.querySelector('.viz-content');
+        if (container) {
+            const containerWidth = container.clientWidth;
+            const containerHeight = container.clientHeight;
+            
+            // Calculate optimal dimensions with some padding
+            this.width = Math.max(350, Math.min(600, containerWidth - this.margin.left - this.margin.right - 20));
+            this.height = Math.max(280, Math.min(450, containerHeight - this.margin.top - this.margin.bottom - 20));
+        } else {
+            // Fallback dimensions
+            this.width = 400;
+            this.height = 320;
+        }
     }
     
     setupEventListeners() {
@@ -46,17 +68,7 @@ class NeuralNetworkVisualization {
             this.loadVisualization();
         });
         
-        document.getElementById('animate-epochs').addEventListener('click', () => {
-            this.animateEpochs();
-        });
-        
-        document.getElementById('animate-layers').addEventListener('click', () => {
-            this.animateLayers();
-        });
-        
-        document.getElementById('play-trajectories').addEventListener('click', () => {
-            this.playTrajectoryAnimation();
-        });
+        // Removed animate-epochs, animate-layers, and play-trajectories buttons
         
         // Trajectory controls
         document.getElementById('show-trajectories').addEventListener('change', (e) => {
@@ -95,15 +107,26 @@ class NeuralNetworkVisualization {
             this.playProgressiveLayerAnimation();
         });
         
+        // Next buttons
+        document.getElementById('next-epoch').addEventListener('click', () => {
+            this.nextEpoch();
+        });
+        
+        document.getElementById('next-layer').addEventListener('click', () => {
+            this.nextLayer();
+        });
+        
         // Epoch and layer selection
         document.getElementById('epoch-select').addEventListener('change', (e) => {
             this.currentEpochIndex = parseInt(e.target.value);
             this.updateVisualization();
+            this.updateProgressBars();
         });
         
         document.getElementById('layer-select').addEventListener('change', (e) => {
             this.currentLayerIndex = parseInt(e.target.value);
             this.updateVisualization();
+            this.updateProgressBars();
         });
         
         // Reduction method change
@@ -227,16 +250,24 @@ class NeuralNetworkVisualization {
         this.createEpochVisualization();
         this.createLayerVisualization();
         this.createLegend();
+        this.updateProgressBars();
     }
     
     createEpochVisualization() {
         const container = document.getElementById('epoch-viz');
         container.innerHTML = '';
         
+        // Update dimensions before creating visualization
+        this.updateDimensions();
+        
         const svg = d3.select(container)
             .append('svg')
             .attr('width', this.width + this.margin.left + this.margin.right)
-            .attr('height', this.height + this.margin.top + this.margin.bottom);
+            .attr('height', this.height + this.margin.top + this.margin.bottom)
+            .attr('viewBox', `0 0 ${this.width + this.margin.left + this.margin.right} ${this.height + this.margin.top + this.margin.bottom}`)
+            .attr('preserveAspectRatio', 'xMidYMid meet')
+            .style('max-width', '100%')
+            .style('height', 'auto');
         
         const g = svg.append('g')
             .attr('transform', `translate(${this.margin.left},${this.margin.top})`);
@@ -257,16 +288,18 @@ class NeuralNetworkVisualization {
         g.append('text')
             .attr('class', 'axis-label')
             .attr('x', this.width / 2)
-            .attr('y', this.height + 35)
+            .attr('y', this.height + Math.min(35, this.margin.bottom - 5))
             .style('text-anchor', 'middle')
+            .style('font-size', '12px')
             .text('Dimension 1');
         
         g.append('text')
             .attr('class', 'axis-label')
             .attr('transform', 'rotate(-90)')
             .attr('x', -this.height / 2)
-            .attr('y', -25)
+            .attr('y', -Math.min(25, this.margin.left - 15))
             .style('text-anchor', 'middle')
+            .style('font-size', '12px')
             .text('Dimension 2');
         
         this.epochSvg = svg;
@@ -277,10 +310,17 @@ class NeuralNetworkVisualization {
         const container = document.getElementById('layer-viz');
         container.innerHTML = '';
         
+        // Update dimensions before creating visualization
+        this.updateDimensions();
+        
         const svg = d3.select(container)
             .append('svg')
             .attr('width', this.width + this.margin.left + this.margin.right)
-            .attr('height', this.height + this.margin.top + this.margin.bottom);
+            .attr('height', this.height + this.margin.top + this.margin.bottom)
+            .attr('viewBox', `0 0 ${this.width + this.margin.left + this.margin.right} ${this.height + this.margin.top + this.margin.bottom}`)
+            .attr('preserveAspectRatio', 'xMidYMid meet')
+            .style('max-width', '100%')
+            .style('height', 'auto');
         
         const g = svg.append('g')
             .attr('transform', `translate(${this.margin.left},${this.margin.top})`);
@@ -301,20 +341,58 @@ class NeuralNetworkVisualization {
         g.append('text')
             .attr('class', 'axis-label')
             .attr('x', this.width / 2)
-            .attr('y', this.height + 35)
+            .attr('y', this.height + Math.min(35, this.margin.bottom - 5))
             .style('text-anchor', 'middle')
+            .style('font-size', '12px')
             .text('Dimension 1');
         
         g.append('text')
             .attr('class', 'axis-label')
             .attr('transform', 'rotate(-90)')
             .attr('x', -this.height / 2)
-            .attr('y', -25)
+            .attr('y', -Math.min(25, this.margin.left - 15))
             .style('text-anchor', 'middle')
+            .style('font-size', '12px')
             .text('Dimension 2');
         
         this.layerSvg = svg;
         this.updateLayerVisualization();
+    }
+    
+    resizeVisualization(type) {
+        if (!this.currentData) return;
+        
+        this.updateDimensions();
+        
+        if (type === 'epoch' && this.epochSvg) {
+            // Update SVG dimensions
+            this.epochSvg
+                .attr('width', this.width + this.margin.left + this.margin.right)
+                .attr('height', this.height + this.margin.top + this.margin.bottom)
+                .attr('viewBox', `0 0 ${this.width + this.margin.left + this.margin.right} ${this.height + this.margin.top + this.margin.bottom}`);
+            
+            // Update scales range
+            this.epochXScale.range([0, this.width]);
+            this.epochYScale.range([this.height, 0]);
+            
+            // Re-draw visualization
+            this.updateEpochVisualization();
+        }
+        
+        if (type === 'layer' && this.layerSvg) {
+            // Update SVG dimensions
+            this.layerSvg
+                .attr('width', this.width + this.margin.left + this.margin.right)
+                .attr('height', this.height + this.margin.top + this.margin.bottom)
+                .attr('viewBox', `0 0 ${this.width + this.margin.left + this.margin.right} ${this.height + this.margin.top + this.margin.bottom}`);
+            
+            // Update scales range
+            this.layerXScale.range([0, this.width]);
+            this.layerYScale.range([this.height, 0]);
+            
+            // Re-draw visualization
+            this.updateLayerVisualization();
+        }
     }
     
 
@@ -829,53 +907,7 @@ class NeuralNetworkVisualization {
         return indices;
     }
     
-    playTrajectoryAnimation() {
-        if (!this.currentData) return;
-        
-        this.isPlayingTrajectory = true;
-        const button = document.getElementById('play-trajectories');
-        button.textContent = 'Stop Journey';
-        button.disabled = false;
-        
-        // Animate through all epochs and layers
-        let epochIndex = 0;
-        let layerIndex = 0;
-        
-        const animate = () => {
-            if (!this.isPlayingTrajectory) {
-                button.textContent = 'Play Full Journey';
-                return;
-            }
-            
-            this.currentEpochIndex = epochIndex;
-            this.currentLayerIndex = layerIndex;
-            
-            this.updateVisualization();
-            
-            // Progress through epochs first, then layers
-            epochIndex++;
-            if (epochIndex >= this.currentData.epochs.length) {
-                epochIndex = 0;
-                layerIndex++;
-                if (layerIndex >= this.currentData.layers.length) {
-                    // Animation complete
-                    this.isPlayingTrajectory = false;
-                    button.textContent = 'Play Full Journey';
-                    return;
-                }
-            }
-            
-            setTimeout(animate, this.animationSpeed / 2);
-        };
-        
-        // Toggle animation
-        if (this.isPlayingTrajectory) {
-            this.isPlayingTrajectory = false;
-            button.textContent = 'Play Full Journey';
-        } else {
-            animate();
-        }
-    }
+    // Removed playTrajectoryAnimation() function - no longer needed
     
     highlightSameClass(targetClass) {
         // Highlight all points with the same class across all visualizations
@@ -934,8 +966,7 @@ class NeuralNetworkVisualization {
             this.updateEpochVisualization();
             
             // Update progress bar
-            const progress = (this.currentEpochIndex / (this.currentData.epochs.length - 1)) * 100;
-            document.getElementById('epoch-progress').style.width = progress + '%';
+            this.updateProgressBars();
             
             setTimeout(animate, this.animationSpeed);
         };
@@ -963,8 +994,7 @@ class NeuralNetworkVisualization {
             this.updateLayerVisualization();
             
             // Update progress bar
-            const progress = (this.currentLayerIndex / (this.currentData.layers.length - 1)) * 100;
-            document.getElementById('layer-progress').style.width = progress + '%';
+            this.updateProgressBars();
             
             setTimeout(animate, this.animationSpeed);
         };
@@ -1086,44 +1116,60 @@ class NeuralNetworkVisualization {
         setTimeout(resetButton, 15000);
     }
     
-    animateEpochs() {
-        if (!this.currentData) return;
+    // Removed animateEpochs() and animateLayers() functions - no longer needed
+    
+    nextEpoch() {
+        if (!this.currentData || !this.currentData.epochs) {
+            this.showError('Please load a dataset first');
+            return;
+        }
         
-        // Create a smooth transition through all epochs
-        const epochs = this.currentData.epochs;
-        let currentIndex = 0;
+        // Move to next epoch (cycle back to 0 if at end)
+        this.currentEpochIndex = (this.currentEpochIndex + 1) % this.currentData.epochs.length;
         
-        const animate = () => {
-            if (currentIndex >= epochs.length) return;
-            
-            this.currentEpochIndex = currentIndex;
-            this.updateEpochVisualization();
-            
-            currentIndex++;
-            setTimeout(animate, this.animationSpeed);
-        };
+        // Update epoch dropdown
+        document.getElementById('epoch-select').value = this.currentEpochIndex;
         
-        animate();
+        // Update both visualizations since epoch affects both panels
+        this.updateVisualization();
+        
+        // Update progress bars
+        this.updateProgressBars();
+        
+        console.log(`Advanced to epoch ${this.currentData.epochs[this.currentEpochIndex]} (index: ${this.currentEpochIndex})`);
     }
     
-    animateLayers() {
+    nextLayer() {
+        if (!this.currentData || !this.currentData.layers) {
+            this.showError('Please load a dataset first');
+            return;
+        }
+        
+        // Move to next layer (cycle back to 0 if at end)
+        this.currentLayerIndex = (this.currentLayerIndex + 1) % this.currentData.layers.length;
+        
+        // Update layer dropdown
+        document.getElementById('layer-select').value = this.currentLayerIndex;
+        
+        // Update only layer visualization (epoch panel shouldn't change)
+        this.updateLayerVisualization();
+        
+        // Update progress bars
+        this.updateProgressBars();
+        
+        console.log(`Advanced to layer ${this.currentData.layers[this.currentLayerIndex]} (index: ${this.currentLayerIndex})`);
+    }
+    
+    updateProgressBars() {
         if (!this.currentData) return;
         
-        // Create a smooth transition through all layers
-        const layers = this.currentData.layers;
-        let currentIndex = 0;
+        // Update epoch progress
+        const epochProgress = (this.currentEpochIndex / (this.currentData.epochs.length - 1)) * 100;
+        document.getElementById('epoch-progress').style.width = epochProgress + '%';
         
-        const animate = () => {
-            if (currentIndex >= layers.length) return;
-            
-            this.currentLayerIndex = currentIndex;
-            this.updateLayerVisualization();
-            
-            currentIndex++;
-            setTimeout(animate, this.animationSpeed);
-        };
-        
-        animate();
+        // Update layer progress  
+        const layerProgress = (this.currentLayerIndex / (this.currentData.layers.length - 1)) * 100;
+        document.getElementById('layer-progress').style.width = layerProgress + '%';
     }
     
     showError(message) {
