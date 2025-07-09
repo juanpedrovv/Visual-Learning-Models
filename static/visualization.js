@@ -8,6 +8,18 @@ class NeuralNetworkVisualization {
         this.animationSpeed = 1000; // ms between frames
         this.currentEpochIndex = 0;
         this.currentLayerIndex = 0;
+        this.showTrajectories = true;
+        this.showArrows = false;
+        this.trajectoryAnimationIndex = 0;
+        this.isPlayingTrajectory = false;
+        
+        // New progressive animation properties
+        this.trajectoryAnimationId = null;
+        this.currentTrajectoryBatch = 0;
+        this.trajectoriesPerBatch = 8; // Show only 8 trajectories at a time
+        this.trajectoryDuration = 2000; // Duration for each trajectory animation
+        this.trajectoryFadeTime = 1000; // Time for trajectory to fade out
+        this.maxVisibleTrajectories = 15; // Maximum trajectories visible simultaneously
         
         // Visualization dimensions
         this.margin = { top: 20, right: 20, bottom: 40, left: 40 };
@@ -42,6 +54,21 @@ class NeuralNetworkVisualization {
             this.animateLayers();
         });
         
+        document.getElementById('play-trajectories').addEventListener('click', () => {
+            this.playTrajectoryAnimation();
+        });
+        
+        // Trajectory controls
+        document.getElementById('show-trajectories').addEventListener('change', (e) => {
+            this.showTrajectories = e.target.checked;
+            this.updateVisualization();
+        });
+        
+        document.getElementById('show-arrows').addEventListener('change', (e) => {
+            this.showArrows = e.target.checked;
+            this.updateVisualization();
+        });
+        
         // Animation controls
         document.getElementById('play-epoch').addEventListener('click', () => {
             this.playEpochAnimation();
@@ -57,6 +84,15 @@ class NeuralNetworkVisualization {
         
         document.getElementById('pause-layer').addEventListener('click', () => {
             this.pauseLayerAnimation();
+        });
+        
+        // Progressive animation buttons
+        document.getElementById('play-progressive-epoch').addEventListener('click', () => {
+            this.playProgressiveEpochAnimation();
+        });
+        
+        document.getElementById('play-progressive-layer').addEventListener('click', () => {
+            this.playProgressiveLayerAnimation();
         });
         
         // Epoch and layer selection
@@ -75,6 +111,15 @@ class NeuralNetworkVisualization {
             radio.addEventListener('change', () => {
                 this.updateVisualization();
             });
+        });
+        
+        // Animation settings
+        document.getElementById('animation-speed').addEventListener('change', (e) => {
+            this.trajectoryDuration = parseInt(e.target.value);
+        });
+        
+        document.getElementById('trajectory-density').addEventListener('change', (e) => {
+            this.trajectoriesPerBatch = parseInt(e.target.value);
         });
         
 
@@ -277,6 +322,9 @@ class NeuralNetworkVisualization {
     updateVisualization() {
         if (!this.currentData) return;
         
+        // Clear any running trajectory animations before updating
+        this.clearTrajectoryAnimation();
+        
         this.updateEpochVisualization();
         this.updateLayerVisualization();
     }
@@ -310,6 +358,11 @@ class NeuralNetworkVisualization {
         const g = this.epochSvg.select('g');
         g.select('.x-axis').call(d3.axisBottom(this.epochXScale));
         g.select('.y-axis').call(d3.axisLeft(this.epochYScale));
+        
+        // Only draw static trajectories if enabled and not in progressive mode
+        if (this.showTrajectories && epochData.length > 1 && !this.trajectoryAnimationId) {
+            this.drawStaticTrajectories(g, epochData, coordsKey, 'epoch', this.epochXScale, this.epochYScale);
+        }
         
         // Show current epoch data
         const currentEpochData = epochData[this.currentEpochIndex];
@@ -350,6 +403,11 @@ class NeuralNetworkVisualization {
         const g = this.layerSvg.select('g');
         g.select('.x-axis').call(d3.axisBottom(this.layerXScale));
         g.select('.y-axis').call(d3.axisLeft(this.layerYScale));
+        
+        // Only draw static trajectories if enabled and not in progressive mode
+        if (this.showTrajectories && layerData.length > 1 && !this.trajectoryAnimationId) {
+            this.drawStaticTrajectories(g, layerData, coordsKey, 'layer', this.layerXScale, this.layerYScale);
+        }
         
         // Show current layer data
         const currentLayerData = layerData[this.currentLayerIndex];
@@ -421,7 +479,7 @@ class NeuralNetworkVisualization {
                 const index = circles.nodes().indexOf(event.target);
                 const label = data.labels[index];
                 console.log(`Clicked on point: class ${label}, epoch ${data.epoch}, layer ${data.layer}`);
-                
+        
                 // Could add more click functionality here
                 this.highlightSameClass(label);
             });
@@ -432,6 +490,391 @@ class NeuralNetworkVisualization {
             .transition()
             .duration(500)
             .attr('r', 3);
+    }
+    
+    drawStaticTrajectories(g, dataSequence, coordsKey, type, xScale, yScale) {
+        // Remove existing trajectories
+        g.selectAll('.trajectory-path').remove();
+        g.selectAll('.trajectory-arrow').remove();
+        g.selectAll('.trajectory-point').remove();
+        
+        if (dataSequence.length < 2) return;
+        
+        // Sample fewer points for cleaner display
+        const sampleSize = Math.min(30, dataSequence[0][coordsKey].length);
+        const sampleIndices = this.sampleIndices(dataSequence[0][coordsKey].length, sampleSize);
+        
+        // Create line generator
+        const line = d3.line()
+            .x(d => xScale(d[0]))
+            .y(d => yScale(d[1]))
+            .curve(d3.curveCardinal.tension(0.3));
+        
+        // Draw simple static trajectories
+        sampleIndices.forEach(sampleIdx => {
+            const trajectoryPoints = dataSequence.map(data => {
+                if (sampleIdx < data[coordsKey].length) {
+                    return {
+                        coords: data[coordsKey][sampleIdx],
+                        label: data.labels[sampleIdx],
+                        step: type === 'epoch' ? data.epoch : data.layer
+                    };
+                }
+                return null;
+            }).filter(point => point !== null);
+            
+            if (trajectoryPoints.length < 2) return;
+            
+            const trajectoryClass = trajectoryPoints[0].label;
+            const trajectoryColor = this.colorScale(trajectoryClass);
+            const pathData = trajectoryPoints.map(p => p.coords);
+            
+            // Draw simple path
+            g.append('path')
+                .datum(pathData)
+                .attr('class', 'trajectory-path')
+                .attr('d', line)
+                .attr('stroke', trajectoryColor)
+                .attr('stroke-width', 1.5)
+                .attr('stroke-opacity', 0.3)
+                .attr('fill', 'none')
+                .style('pointer-events', 'none');
+        });
+    }
+    
+    drawProgressiveTrajectories(g, dataSequence, coordsKey, type, xScale, yScale) {
+        // Clear any existing animation
+        if (this.trajectoryAnimationId) {
+            clearTimeout(this.trajectoryAnimationId);
+        }
+        
+        // Remove existing trajectories
+        g.selectAll('.trajectory-path').remove();
+        g.selectAll('.trajectory-arrow').remove();
+        g.selectAll('.trajectory-point').remove();
+        
+        if (dataSequence.length < 2) return;
+        
+        // Sample fewer points for cleaner animation
+        const sampleSize = Math.min(50, dataSequence[0][coordsKey].length);
+        const sampleIndices = this.sampleIndices(dataSequence[0][coordsKey].length, sampleSize);
+        
+        // Create line generator with smoother curves
+        const line = d3.line()
+            .x(d => xScale(d[0]))
+            .y(d => yScale(d[1]))
+            .curve(d3.curveCardinal.tension(0.4));
+        
+        // Prepare trajectory data grouped by class for smoother animation
+        const trajectoryData = this.prepareTrajectoryData(sampleIndices, dataSequence, coordsKey, type);
+        
+        // Start progressive animation
+        if (trajectoryData.length > 0) {
+            console.log(`Starting progressive animation with ${trajectoryData.length} trajectories`);
+        }
+        this.animateProgressiveTrajectories(g, trajectoryData, line, xScale, yScale);
+    }
+    
+    prepareTrajectoryData(sampleIndices, dataSequence, coordsKey, type) {
+        const trajectories = [];
+        
+        sampleIndices.forEach(sampleIdx => {
+            const trajectoryPoints = dataSequence.map(data => {
+                if (sampleIdx < data[coordsKey].length) {
+                    return {
+                        coords: data[coordsKey][sampleIdx],
+                        label: data.labels[sampleIdx],
+                        step: type === 'epoch' ? data.epoch : data.layer
+                    };
+                }
+                return null;
+            }).filter(point => point !== null);
+            
+            if (trajectoryPoints.length >= 2) {
+                trajectories.push({
+                    points: trajectoryPoints,
+                    class: trajectoryPoints[0].label,
+                    color: this.colorScale(trajectoryPoints[0].label),
+                    sampleIdx: sampleIdx
+                });
+            }
+        });
+        
+        // Group trajectories by class for better visual flow
+        const groupedByClass = {};
+        trajectories.forEach(traj => {
+            if (!groupedByClass[traj.class]) {
+                groupedByClass[traj.class] = [];
+            }
+            groupedByClass[traj.class].push(traj);
+        });
+        
+        // Shuffle within each class but keep classes together
+        const shuffledTrajectories = [];
+        Object.values(groupedByClass).forEach(classTrajectories => {
+            // Shuffle trajectories within class
+            for (let i = classTrajectories.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [classTrajectories[i], classTrajectories[j]] = [classTrajectories[j], classTrajectories[i]];
+            }
+            shuffledTrajectories.push(...classTrajectories.slice(0, 8)); // Limit per class
+        });
+        
+        return shuffledTrajectories.slice(0, 40); // Overall limit
+    }
+    
+    animateProgressiveTrajectories(g, trajectories, line, xScale, yScale) {
+        if (trajectories.length === 0) return;
+        
+        let currentIndex = 0;
+        const visibleTrajectories = new Map(); // Track visible trajectories for fading
+        
+        const animateNextBatch = () => {
+            // Remove oldest trajectories if we have too many
+            if (visibleTrajectories.size >= this.maxVisibleTrajectories) {
+                const oldestKeys = Array.from(visibleTrajectories.keys()).slice(0, this.trajectoriesPerBatch);
+                oldestKeys.forEach(key => {
+                    const trajectory = visibleTrajectories.get(key);
+                    this.fadeOutTrajectory(trajectory);
+                    visibleTrajectories.delete(key);
+                });
+            }
+            
+            // Add new batch of trajectories
+            const batchEnd = Math.min(currentIndex + this.trajectoriesPerBatch, trajectories.length);
+            const currentBatch = trajectories.slice(currentIndex, batchEnd);
+            
+            currentBatch.forEach((trajectory, i) => {
+                // Delay each trajectory in the batch slightly for staggered effect
+                setTimeout(() => {
+                    const animatedTrajectory = this.animateSingleTrajectory(g, trajectory, line, xScale, yScale);
+                    visibleTrajectories.set(`traj_${currentIndex + i}`, animatedTrajectory);
+                }, i * 150); // 150ms delay between trajectories in batch
+            });
+            
+            currentIndex = batchEnd;
+            
+            // Continue animation if there are more trajectories
+            if (currentIndex < trajectories.length) {
+                this.trajectoryAnimationId = setTimeout(animateNextBatch, this.trajectoryDuration);
+            } else {
+                // Animation complete - start fading all remaining trajectories after a delay
+                setTimeout(() => {
+                    visibleTrajectories.forEach(trajectory => {
+                        this.fadeOutTrajectory(trajectory);
+                    });
+                    visibleTrajectories.clear();
+                }, 2000);
+            }
+        };
+        
+        animateNextBatch();
+    }
+    
+    animateSingleTrajectory(g, trajectoryData, line, xScale, yScale) {
+        const pathData = trajectoryData.points.map(p => p.coords);
+        const color = trajectoryData.color;
+        
+        // Create path element
+        const path = g.append('path')
+            .datum(pathData)
+            .attr('class', 'trajectory-path')
+            .attr('d', line)
+            .attr('stroke', color)
+            .attr('stroke-width', 2)
+            .attr('stroke-opacity', 0)
+            .attr('fill', 'none')
+            .style('pointer-events', 'none');
+        
+        // Get path length for animation
+        const totalLength = path.node().getTotalLength();
+        
+        // Set up path for animation
+        path
+            .attr('stroke-dasharray', totalLength + ' ' + totalLength)
+            .attr('stroke-dashoffset', totalLength);
+        
+        // Animate path drawing
+        path.transition()
+            .duration(this.trajectoryDuration * 0.7)
+            .ease(d3.easeQuadInOut)
+            .attr('stroke-dashoffset', 0)
+            .attr('stroke-opacity', 0.6);
+        
+        // Add start and end points
+        const startPoint = g.append('circle')
+            .attr('class', 'trajectory-point start')
+            .attr('cx', xScale(trajectoryData.points[0].coords[0]))
+            .attr('cy', yScale(trajectoryData.points[0].coords[1]))
+            .attr('r', 0)
+            .attr('fill', color)
+            .attr('stroke', '#fff')
+            .attr('stroke-width', 2)
+            .style('pointer-events', 'none');
+        
+        const endPoint = g.append('circle')
+            .attr('class', 'trajectory-point end')
+            .attr('cx', xScale(trajectoryData.points[trajectoryData.points.length - 1].coords[0]))
+            .attr('cy', yScale(trajectoryData.points[trajectoryData.points.length - 1].coords[1]))
+            .attr('r', 0)
+            .attr('fill', color)
+            .attr('stroke', '#fff')
+            .attr('stroke-width', 2)
+            .style('pointer-events', 'none');
+        
+        // Animate points
+        startPoint.transition()
+            .delay(200)
+            .duration(400)
+            .attr('r', 3);
+            
+        endPoint.transition()
+            .delay(this.trajectoryDuration * 0.6)
+            .duration(400)
+            .attr('r', 4);
+        
+        // Add arrow at end if enabled
+        let arrow = null;
+        if (this.showArrows && trajectoryData.points.length > 2) {
+            arrow = this.addTrajectoryArrow(g, trajectoryData.points, xScale, yScale, color);
+        }
+        
+        return { path, startPoint, endPoint, arrow };
+    }
+    
+    fadeOutTrajectory(trajectory) {
+        const duration = this.trajectoryFadeTime;
+        
+        if (trajectory.path) {
+            trajectory.path.transition()
+                .duration(duration)
+                .attr('stroke-opacity', 0)
+                .remove();
+        }
+        
+        if (trajectory.startPoint) {
+            trajectory.startPoint.transition()
+                .duration(duration)
+                .attr('r', 0)
+                .attr('opacity', 0)
+                .remove();
+        }
+        
+        if (trajectory.endPoint) {
+            trajectory.endPoint.transition()
+                .duration(duration)
+                .attr('r', 0)
+                .attr('opacity', 0)
+                .remove();
+        }
+        
+        if (trajectory.arrow) {
+            trajectory.arrow.transition()
+                .duration(duration)
+                .attr('opacity', 0)
+                .remove();
+        }
+    }
+    
+    addTrajectoryArrow(g, trajectoryPoints, xScale, yScale, color) {
+        if (trajectoryPoints.length < 2) return null;
+        
+        const endIdx = trajectoryPoints.length - 1;
+        const current = trajectoryPoints[endIdx];
+        const previous = trajectoryPoints[endIdx - 1];
+        
+        const dx = xScale(current.coords[0]) - xScale(previous.coords[0]);
+        const dy = yScale(current.coords[1]) - yScale(previous.coords[1]);
+        const angle = Math.atan2(dy, dx);
+        
+        const arrowSize = 8;
+        
+        const arrow = g.append('polygon')
+            .attr('class', 'trajectory-arrow')
+            .attr('points', `0,${-arrowSize/2} ${arrowSize},0 0,${arrowSize/2}`)
+            .attr('transform', 
+                `translate(${xScale(current.coords[0])},${yScale(current.coords[1])}) rotate(${angle * 180 / Math.PI})`)
+            .attr('fill', color)
+            .attr('opacity', 0)
+            .style('pointer-events', 'none');
+        
+        // Animate arrow appearance
+        arrow.transition()
+            .delay(this.trajectoryDuration * 0.8)
+            .duration(400)
+            .attr('opacity', 0.8);
+        
+        return arrow;
+    }
+    
+    // Clean up trajectories when changing visualization
+    clearTrajectoryAnimation() {
+        if (this.trajectoryAnimationId) {
+            clearTimeout(this.trajectoryAnimationId);
+            this.trajectoryAnimationId = null;
+        }
+    }
+    
+    sampleIndices(totalLength, sampleSize) {
+        if (totalLength <= sampleSize) {
+            return Array.from({length: totalLength}, (_, i) => i);
+        }
+        
+        // Stratified sampling to get representative points
+        const step = totalLength / sampleSize;
+        const indices = [];
+        for (let i = 0; i < sampleSize; i++) {
+            indices.push(Math.floor(i * step));
+        }
+        return indices;
+    }
+    
+    playTrajectoryAnimation() {
+        if (!this.currentData) return;
+        
+        this.isPlayingTrajectory = true;
+        const button = document.getElementById('play-trajectories');
+        button.textContent = 'Stop Journey';
+        button.disabled = false;
+        
+        // Animate through all epochs and layers
+        let epochIndex = 0;
+        let layerIndex = 0;
+        
+        const animate = () => {
+            if (!this.isPlayingTrajectory) {
+                button.textContent = 'Play Full Journey';
+                return;
+            }
+            
+            this.currentEpochIndex = epochIndex;
+            this.currentLayerIndex = layerIndex;
+            
+            this.updateVisualization();
+            
+            // Progress through epochs first, then layers
+            epochIndex++;
+            if (epochIndex >= this.currentData.epochs.length) {
+                epochIndex = 0;
+                layerIndex++;
+                if (layerIndex >= this.currentData.layers.length) {
+                    // Animation complete
+                    this.isPlayingTrajectory = false;
+                    button.textContent = 'Play Full Journey';
+                    return;
+                }
+            }
+            
+            setTimeout(animate, this.animationSpeed / 2);
+        };
+        
+        // Toggle animation
+        if (this.isPlayingTrajectory) {
+            this.isPlayingTrajectory = false;
+            button.textContent = 'Play Full Journey';
+        } else {
+            animate();
+        }
     }
     
     highlightSameClass(targetClass) {
@@ -533,6 +976,114 @@ class NeuralNetworkVisualization {
         this.isAnimating = false;
         document.getElementById('play-layer').disabled = false;
         document.getElementById('pause-layer').disabled = true;
+    }
+    
+    playProgressiveEpochAnimation() {
+        if (!this.currentData) {
+            this.showError('Please load a dataset first');
+            return;
+        }
+        
+        const button = document.getElementById('play-progressive-epoch');
+        
+        // If already running, stop it
+        if (this.trajectoryAnimationId) {
+            this.clearTrajectoryAnimation();
+            button.textContent = '🎬 Progressive';
+            button.classList.remove('stopping');
+            return;
+        }
+        
+        // Force trajectory display and start progressive animation for epoch visualization
+        button.textContent = '⏹️ Stop Progressive';
+        button.classList.add('stopping');
+        
+        // Ensure trajectories are enabled
+        document.getElementById('show-trajectories').checked = true;
+        this.showTrajectories = true;
+        
+        // Clear any existing animation and start progressive animation for epoch
+        this.clearTrajectoryAnimation();
+        
+        // Get current epoch data for progressive animation
+        const currentLayer = this.currentData.layers[this.currentLayerIndex];
+        if (!currentLayer) return;
+        
+        const reductionMethod = document.querySelector('input[name="reduction"]:checked').value;
+        const coordsKey = reductionMethod === 'tsne' ? 'tsne_coords' : 'umap_coords';
+        
+        const epochData = this.currentData.epochs.map(epoch => {
+            const key = `epoch_${epoch}_layer_${currentLayer}`;
+            return this.currentData.projections[key];
+        }).filter(d => d);
+        
+        if (epochData.length > 1) {
+            const g = this.epochSvg.select('g');
+            this.drawProgressiveTrajectories(g, epochData, coordsKey, 'epoch', this.epochXScale, this.epochYScale);
+        }
+        
+        // Store reference to reset button after animation completes
+        const resetButton = () => {
+            button.textContent = '🎬 Progressive';
+            button.classList.remove('stopping');
+        };
+        
+        // Reset button after 15 seconds or when animation ends
+        setTimeout(resetButton, 15000);
+    }
+    
+    playProgressiveLayerAnimation() {
+        if (!this.currentData) {
+            this.showError('Please load a dataset first');
+            return;
+        }
+        
+        const button = document.getElementById('play-progressive-layer');
+        
+        // If already running, stop it
+        if (this.trajectoryAnimationId) {
+            this.clearTrajectoryAnimation();
+            button.textContent = '🎬 Progressive';
+            button.classList.remove('stopping');
+            return;
+        }
+        
+        // Force trajectory display and start progressive animation for layer visualization
+        button.textContent = '⏹️ Stop Progressive';
+        button.classList.add('stopping');
+        
+        // Ensure trajectories are enabled
+        document.getElementById('show-trajectories').checked = true;
+        this.showTrajectories = true;
+        
+        // Clear any existing animation and start progressive animation for layer
+        this.clearTrajectoryAnimation();
+        
+        // Get current layer data for progressive animation
+        const currentEpoch = this.currentData.epochs[this.currentEpochIndex];
+        if (currentEpoch === undefined) return;
+        
+        const reductionMethod = document.querySelector('input[name="reduction"]:checked').value;
+        const coordsKey = reductionMethod === 'tsne' ? 'tsne_coords' : 'umap_coords';
+        
+        const layerData = this.currentData.layers.map(layer => {
+            const key = `epoch_${currentEpoch}_layer_${layer}`;
+            return this.currentData.projections[key];
+        }).filter(d => d);
+        
+        if (layerData.length > 1) {
+            const g = this.layerSvg.select('g');
+            this.drawProgressiveTrajectories(g, layerData, coordsKey, 'layer', this.layerXScale, this.layerYScale);
+        }
+        
+        // Store reference to reset button after animation completes
+        const resetButton = () => {
+            button.textContent = '🎬 Progressive';
+            button.classList.remove('stopping');
+        };
+        
+        // Reset button after 15 seconds or when animation ends
+        setTimeout(resetButton, 15000);
     }
     
     animateEpochs() {

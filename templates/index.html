@@ -28,22 +28,7 @@
             margin-bottom: 30px;
         }
         
-        .control-panel {
-            background-color: #f8f9fa;
-            padding: 15px;
-            border-radius: 5px;
-            margin-bottom: 20px;
-            display: flex;
-            flex-wrap: wrap;
-            gap: 15px;
-            align-items: center;
-        }
-        
-        .control-group {
-            display: flex;
-            flex-direction: column;
-            gap: 5px;
-        }
+        /* Removed duplicate - defined below with grid layout */
         
         label {
             font-weight: bold;
@@ -164,6 +149,33 @@
             gap: 10px;
             align-items: center;
             margin-top: 15px;
+            flex-wrap: wrap;
+        }
+        
+        .progressive-btn {
+            background-color: #28a745 !important;
+            border: none;
+            padding: 8px 12px;
+            border-radius: 4px;
+            color: white;
+            font-size: 14px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            white-space: nowrap;
+        }
+        
+        .progressive-btn:hover {
+            background-color: #218838 !important;
+            transform: translateY(-1px);
+            box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+        }
+        
+        .progressive-btn.stopping {
+            background-color: #dc3545 !important;
+        }
+        
+        .progressive-btn.stopping:hover {
+            background-color: #c82333 !important;
         }
         
         .progress-bar {
@@ -207,12 +219,82 @@
             color: #333;
         }
         
-        .reduction-method {
+        .reduction-method, .trajectory-controls {
             margin-left: 15px;
         }
         
-        .reduction-method input[type="radio"] {
+        .reduction-method input[type="radio"], 
+        .trajectory-controls input[type="checkbox"] {
             margin-right: 5px;
+        }
+        
+        .trajectory-controls {
+            display: flex;
+            gap: 15px;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+        
+        .control-panel {
+            background-color: #f8f9fa;
+            padding: 15px;
+            border-radius: 5px;
+            margin-bottom: 20px;
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            align-items: end;
+        }
+        
+        .control-group {
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
+            min-width: 150px;
+        }
+        
+        .trajectory-path {
+            stroke-width: 2;
+            fill: none;
+            opacity: 0.6;
+            pointer-events: none;
+            filter: drop-shadow(0 1px 2px rgba(0,0,0,0.1));
+        }
+        
+        .trajectory-arrow {
+            fill: #333;
+            opacity: 0.8;
+            filter: drop-shadow(0 1px 2px rgba(0,0,0,0.2));
+        }
+        
+        .trajectory-point {
+            stroke-width: 2;
+            stroke: #fff;
+            filter: drop-shadow(0 1px 3px rgba(0,0,0,0.2));
+        }
+        
+        .trajectory-point.start {
+            stroke-width: 3;
+        }
+        
+        .trajectory-point.end {
+            stroke-width: 3;
+            filter: drop-shadow(0 2px 4px rgba(0,0,0,0.3));
+        }
+        
+        /* Smooth transitions for all elements */
+        .data-point, .trajectory-path, .trajectory-point, .trajectory-arrow {
+            transition: all 0.3s ease;
+        }
+        
+        /* Enhance data points */
+        .data-point {
+            filter: drop-shadow(0 1px 2px rgba(0,0,0,0.1));
+        }
+        
+        .data-point:hover {
+            filter: drop-shadow(0 2px 6px rgba(0,0,0,0.3));
+            transform: scale(1.2);
         }
         
         @media (max-width: 768px) {
@@ -288,9 +370,44 @@
                 </div>
             </div>
             
-            <button id="load-data">Load Visualization</button>
-            <button id="animate-epochs">Animate Epochs</button>
-            <button id="animate-layers">Animate Layers</button>
+            <div class="control-group">
+                <label>Trajectory Options:</label>
+                <div class="trajectory-controls">
+                    <input type="checkbox" id="show-trajectories" checked>
+                    <label for="show-trajectories">Show Trajectories</label>
+                    <input type="checkbox" id="show-arrows">
+                    <label for="show-arrows">Show Direction</label>
+                </div>
+            </div>
+            
+            <div class="control-group">
+                <label for="animation-speed">Animation Speed:</label>
+                <select id="animation-speed">
+                    <option value="3000">Slow</option>
+                    <option value="2000" selected>Normal</option>
+                    <option value="1000">Fast</option>
+                    <option value="500">Very Fast</option>
+                </select>
+            </div>
+            
+            <div class="control-group">
+                <label for="trajectory-density">Trajectory Density:</label>
+                <select id="trajectory-density">
+                    <option value="5">Low (5 per batch)</option>
+                    <option value="8" selected>Medium (8 per batch)</option>
+                    <option value="12">High (12 per batch)</option>
+                </select>
+            </div>
+            
+            <div class="control-group">
+                <label>Actions:</label>
+                <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+                    <button id="load-data">Load Visualization</button>
+                    <button id="animate-epochs">Animate Epochs</button>
+                    <button id="animate-layers">Animate Layers</button>
+                    <button id="play-trajectories">Play Full Journey</button>
+                </div>
+            </div>
         </div>
         
         <div class="dataset-info" id="dataset-info" style="display: none;">
@@ -318,6 +435,7 @@
                 <div class="animation-controls">
                     <button id="play-epoch">Play</button>
                     <button id="pause-epoch">Pause</button>
+                    <button id="play-progressive-epoch" class="progressive-btn" title="Play Progressive Trajectory Animation">🎬 Progressive</button>
                     <div class="progress-bar">
                         <div class="progress-fill" id="epoch-progress"></div>
                     </div>
@@ -334,6 +452,7 @@
                 <div class="animation-controls">
                     <button id="play-layer">Play</button>
                     <button id="pause-layer">Pause</button>
+                    <button id="play-progressive-layer" class="progressive-btn" title="Play Progressive Trajectory Animation">🎬 Progressive</button>
                     <div class="progress-bar">
                         <div class="progress-fill" id="layer-progress"></div>
                     </div>
