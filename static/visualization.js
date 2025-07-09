@@ -12,6 +12,9 @@ class NeuralNetworkVisualization {
         this.showArrows = false;
         this.trajectoryAnimationIndex = 0;
         
+        // Class filtering system
+        this.activeClasses = new Set([0, 1, 2, 3, 4, 5, 6, 7, 8, 9]); // All classes active by default
+        
         // New progressive animation properties
         this.trajectoryAnimationId = null;
         this.currentTrajectoryBatch = 0;
@@ -450,6 +453,9 @@ class NeuralNetworkVisualization {
         
         // Update epoch counter
         document.getElementById('epoch-counter').textContent = `${this.currentEpochIndex + 1}/${epochData.length}`;
+        
+        // Update active classes info
+        this.updateActiveClassesInfo();
     }
     
     updateLayerVisualization() {
@@ -495,6 +501,9 @@ class NeuralNetworkVisualization {
         
         // Update layer counter
         document.getElementById('layer-counter').textContent = `${this.currentLayerIndex + 1}/${layerData.length}`;
+        
+        // Update active classes info
+        this.updateActiveClassesInfo();
     }
     
     drawScatterplot(g, data, coordsKey, type) {
@@ -504,33 +513,36 @@ class NeuralNetworkVisualization {
         // Remove existing circles
         g.selectAll('.data-point').remove();
         
-        // Add circles
+        // Filter data by active classes
+        const filteredData = data[coordsKey].map((coord, i) => ({
+            coord: coord,
+            label: data.labels[i],
+            index: i
+        })).filter(item => this.activeClasses.has(item.label));
+        
+        // Add circles for filtered data
         const circles = g.selectAll('.data-point')
-            .data(data[coordsKey])
+            .data(filteredData)
             .enter()
             .append('circle')
             .attr('class', 'data-point')
-            .attr('cx', d => xScale(d[0]))
-            .attr('cy', d => yScale(d[1]))
+            .attr('cx', d => xScale(d.coord[0]))
+            .attr('cy', d => yScale(d.coord[1]))
             .attr('r', 3)
-            .attr('fill', (d, i) => this.colorScale(data.labels[i]))
+            .attr('fill', d => this.colorScale(d.label))
             .attr('opacity', 0.7)
             .style('cursor', 'pointer');
         
         // Add interactivity
         circles
-            .on('mouseover', (event, d, i) => {
-                const index = circles.nodes().indexOf(event.target);
-                const label = data.labels[index];
-                const coords = data[coordsKey][index];
-                
+            .on('mouseover', (event, d) => {
                 this.tooltip.transition()
                     .duration(200)
                     .style('opacity', 0.9);
                 
                 this.tooltip.html(`
-                    <strong>Class:</strong> ${label}<br/>
-                    <strong>Coordinates:</strong> (${coords[0].toFixed(2)}, ${coords[1].toFixed(2)})<br/>
+                    <strong>Class:</strong> ${d.label}<br/>
+                    <strong>Coordinates:</strong> (${d.coord[0].toFixed(2)}, ${d.coord[1].toFixed(2)})<br/>
                     <strong>Epoch:</strong> ${data.epoch}<br/>
                     <strong>Layer:</strong> ${data.layer}
                 `)
@@ -553,13 +565,11 @@ class NeuralNetworkVisualization {
                     .attr('r', 3)
                     .attr('stroke', 'none');
             })
-            .on('click', (event, d, i) => {
-                const index = circles.nodes().indexOf(event.target);
-                const label = data.labels[index];
-                console.log(`Clicked on point: class ${label}, epoch ${data.epoch}, layer ${data.layer}`);
+            .on('click', (event, d) => {
+                console.log(`Clicked on point: class ${d.label}, epoch ${data.epoch}, layer ${data.layer}`);
         
                 // Could add more click functionality here
-                this.highlightSameClass(label);
+                this.highlightSameClass(d.label);
             });
         
         // Animate entrance
@@ -604,6 +614,10 @@ class NeuralNetworkVisualization {
             if (trajectoryPoints.length < 2) return;
             
             const trajectoryClass = trajectoryPoints[0].label;
+            
+            // Only draw trajectory if class is active
+            if (!this.activeClasses.has(trajectoryClass)) return;
+            
             const trajectoryColor = this.colorScale(trajectoryClass);
             const pathData = trajectoryPoints.map(p => p.coords);
             
@@ -669,12 +683,17 @@ class NeuralNetworkVisualization {
             }).filter(point => point !== null);
             
             if (trajectoryPoints.length >= 2) {
-                trajectories.push({
-                    points: trajectoryPoints,
-                    class: trajectoryPoints[0].label,
-                    color: this.colorScale(trajectoryPoints[0].label),
-                    sampleIdx: sampleIdx
-                });
+                const trajectoryClass = trajectoryPoints[0].label;
+                
+                // Only include trajectory if class is active
+                if (this.activeClasses.has(trajectoryClass)) {
+                    trajectories.push({
+                        points: trajectoryPoints,
+                        class: trajectoryClass,
+                        color: this.colorScale(trajectoryClass),
+                        sampleIdx: sampleIdx
+                    });
+                }
             }
         });
         
@@ -933,10 +952,22 @@ class NeuralNetworkVisualization {
         const legendContainer = document.getElementById('legend');
         legendContainer.innerHTML = '';
         
-        // Create legend for the 10 classes (0-9)
+        // Add title for legend
+        const title = document.createElement('div');
+        title.className = 'legend-title';
+        title.textContent = 'Filter by Class (click to toggle):';
+        legendContainer.appendChild(title);
+        
+        // Create interactive legend buttons for the 10 classes (0-9)
         for (let i = 0; i < 10; i++) {
-            const legendItem = document.createElement('div');
-            legendItem.className = 'legend-item';
+            const legendButton = document.createElement('button');
+            legendButton.className = 'legend-button';
+            legendButton.setAttribute('data-class', i);
+            
+            // Set initial active state
+            if (this.activeClasses.has(i)) {
+                legendButton.classList.add('active');
+            }
             
             const colorBox = document.createElement('div');
             colorBox.className = 'legend-color';
@@ -945,9 +976,116 @@ class NeuralNetworkVisualization {
             const label = document.createElement('span');
             label.textContent = `Class ${i}`;
             
-            legendItem.appendChild(colorBox);
-            legendItem.appendChild(label);
-            legendContainer.appendChild(legendItem);
+            legendButton.appendChild(colorBox);
+            legendButton.appendChild(label);
+            
+            // Add click event for toggling
+            legendButton.addEventListener('click', () => {
+                this.toggleClass(i);
+            });
+            
+            legendContainer.appendChild(legendButton);
+        }
+        
+        // Add control buttons
+        const controlsDiv = document.createElement('div');
+        controlsDiv.className = 'legend-controls';
+        
+        const selectAllBtn = document.createElement('button');
+        selectAllBtn.textContent = 'Select All';
+        selectAllBtn.className = 'legend-control-btn';
+        selectAllBtn.addEventListener('click', () => this.selectAllClasses());
+        
+        const selectNoneBtn = document.createElement('button');
+        selectNoneBtn.textContent = 'Select None';
+        selectNoneBtn.className = 'legend-control-btn';
+        selectNoneBtn.addEventListener('click', () => this.selectNoneClasses());
+        
+        controlsDiv.appendChild(selectAllBtn);
+        controlsDiv.appendChild(selectNoneBtn);
+        legendContainer.appendChild(controlsDiv);
+    }
+    
+    toggleClass(classIndex) {
+        const button = document.querySelector(`[data-class="${classIndex}"]`);
+        
+        if (this.activeClasses.has(classIndex)) {
+            // Deactivate class
+            this.activeClasses.delete(classIndex);
+            button.classList.remove('active');
+        } else {
+            // Activate class
+            this.activeClasses.add(classIndex);
+            button.classList.add('active');
+        }
+        
+        // Update visualizations
+        this.updateVisualization();
+        
+        console.log(`Toggled class ${classIndex}. Active classes:`, Array.from(this.activeClasses));
+    }
+    
+    selectAllClasses() {
+        this.activeClasses = new Set([0, 1, 2, 3, 4, 5, 6, 7, 8, 9]);
+        
+        // Update button states
+        document.querySelectorAll('.legend-button').forEach(button => {
+            button.classList.add('active');
+        });
+        
+        this.updateVisualization();
+        console.log('All classes selected');
+    }
+    
+    selectNoneClasses() {
+        this.activeClasses.clear();
+        
+        // Update button states
+        document.querySelectorAll('.legend-button').forEach(button => {
+            button.classList.remove('active');
+        });
+        
+        this.updateVisualization();
+        console.log('No classes selected');
+    }
+    
+    updateActiveClassesInfo() {
+        const activeCount = this.activeClasses.size;
+        const totalCount = 10;
+        
+        // Find or create info element
+        let infoElement = document.getElementById('active-classes-info');
+        if (!infoElement) {
+            infoElement = document.createElement('div');
+            infoElement.id = 'active-classes-info';
+            infoElement.className = 'active-classes-info';
+            
+            // Insert after dataset info
+            const datasetInfo = document.getElementById('dataset-info');
+            if (datasetInfo) {
+                datasetInfo.parentNode.insertBefore(infoElement, datasetInfo.nextSibling);
+            }
+        }
+        
+        if (activeCount === 0) {
+            infoElement.innerHTML = `
+                <div style="color: #dc3545; font-weight: bold;">
+                    ⚠️ No classes selected - No data will be displayed
+                </div>
+            `;
+        } else if (activeCount === totalCount) {
+            infoElement.innerHTML = `
+                <div style="color: #28a745;">
+                    ✓ All classes active (${activeCount}/${totalCount})
+                </div>
+            `;
+        } else {
+            const activeClassesList = Array.from(this.activeClasses).sort().join(', ');
+            infoElement.innerHTML = `
+                <div style="color: #007bff;">
+                    🎯 Filtered classes (${activeCount}/${totalCount}): ${activeClassesList}
+                </div>
+            `;
         }
     }
     
