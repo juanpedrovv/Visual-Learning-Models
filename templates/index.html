@@ -1,0 +1,352 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Neural Network Learning Visualization</title>
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            background-color: white;
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        
+        h1 {
+            text-align: center;
+            color: #333;
+            margin-bottom: 30px;
+        }
+        
+        .control-panel {
+            background-color: #f8f9fa;
+            padding: 15px;
+            border-radius: 5px;
+            margin-bottom: 20px;
+            display: flex;
+            flex-wrap: wrap;
+            gap: 15px;
+            align-items: center;
+        }
+        
+        .control-group {
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
+        }
+        
+        label {
+            font-weight: bold;
+            color: #555;
+        }
+        
+        select, button {
+            padding: 8px 12px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 14px;
+        }
+        
+        button {
+            background-color: #007bff;
+            color: white;
+            cursor: pointer;
+            transition: background-color 0.3s;
+        }
+        
+        button:hover {
+            background-color: #0056b3;
+        }
+        
+        button:disabled {
+            background-color: #ccc;
+            cursor: not-allowed;
+        }
+        
+        .visualization-container {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 25px;
+            margin-bottom: 30px;
+        }
+        
+        .viz-panel {
+            background-color: #fff;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            padding: 20px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+            transition: box-shadow 0.3s ease;
+        }
+        
+        .viz-panel:hover {
+            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+        }
+        
+        .viz-title {
+            font-size: 20px;
+            font-weight: bold;
+            color: #333;
+            margin-bottom: 5px;
+            text-align: center;
+        }
+        
+        .viz-subtitle {
+            font-size: 12px;
+            color: #666;
+            text-align: center;
+            margin-bottom: 15px;
+            font-style: italic;
+        }
+        
+        .viz-content {
+            position: relative;
+            height: 500px;
+        }
+        
+        .tooltip {
+            position: absolute;
+            background-color: rgba(0, 0, 0, 0.8);
+            color: white;
+            padding: 8px;
+            border-radius: 4px;
+            font-size: 12px;
+            pointer-events: none;
+            z-index: 1000;
+        }
+        
+        .legend {
+            display: flex;
+            justify-content: center;
+            flex-wrap: wrap;
+            gap: 15px;
+            margin-top: 10px;
+        }
+        
+        .legend-item {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+        }
+        
+        .legend-color {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+        }
+        
+        .loading {
+            text-align: center;
+            padding: 50px;
+            color: #666;
+        }
+        
+        .error {
+            color: #dc3545;
+            background-color: #f8d7da;
+            padding: 10px;
+            border-radius: 4px;
+            margin: 10px 0;
+        }
+        
+        .animation-controls {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+            margin-top: 15px;
+        }
+        
+        .progress-bar {
+            width: 200px;
+            height: 8px;
+            background-color: #e9ecef;
+            border-radius: 4px;
+            overflow: hidden;
+        }
+        
+        .progress-fill {
+            height: 100%;
+            background-color: #007bff;
+            transition: width 0.3s ease;
+        }
+        
+        .info-panel {
+            background-color: #e3f2fd;
+            padding: 15px;
+            border-radius: 5px;
+            margin-bottom: 20px;
+        }
+        
+        .info-panel h3 {
+            margin-top: 0;
+            color: #1976d2;
+        }
+        
+        .dataset-info {
+            display: flex;
+            gap: 20px;
+            margin-bottom: 15px;
+        }
+        
+        .dataset-info div {
+            flex: 1;
+        }
+        
+        .metric {
+            font-weight: bold;
+            color: #333;
+        }
+        
+        .reduction-method {
+            margin-left: 15px;
+        }
+        
+        .reduction-method input[type="radio"] {
+            margin-right: 5px;
+        }
+        
+        @media (max-width: 768px) {
+            .visualization-container {
+                grid-template-columns: 1fr;
+                gap: 20px;
+            }
+            
+            .viz-content {
+                height: 400px;
+            }
+            
+            .control-panel {
+                flex-direction: column;
+                align-items: stretch;
+            }
+            
+            .dataset-info {
+                flex-direction: column;
+                gap: 10px;
+            }
+        }
+        
+        @media (min-width: 1200px) {
+            .viz-content {
+                height: 600px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Neural Network Learning Evolution Visualization</h1>
+        
+        <div class="info-panel">
+            <h3>Interactive Visualization of Neural Network Training</h3>
+            <p>This visualization shows how neural networks learn representations across different epochs and layers. 
+               Use the controls below to explore the evolution of learned features through interactive scatterplots.</p>
+            <p><strong>T1:</strong> Epoch Evolution - See how representations change over training epochs for a fixed layer</p>
+            <p><strong>T2:</strong> Layer Evolution - Explore how different layers learn different features for a fixed epoch</p>
+            <p><em>Click and drag to interact, hover for details, and use animation controls to see evolution in real-time.</em></p>
+        </div>
+        
+        <div class="control-panel">
+            <div class="control-group">
+                <label for="dataset-select">Dataset:</label>
+                <select id="dataset-select">
+                    <option value="">Select a dataset...</option>
+                </select>
+            </div>
+            
+            <div class="control-group">
+                <label for="epoch-select">Epoch:</label>
+                <select id="epoch-select" disabled>
+                    <option value="">Select epoch...</option>
+                </select>
+            </div>
+            
+            <div class="control-group">
+                <label for="layer-select">Layer:</label>
+                <select id="layer-select" disabled>
+                    <option value="">Select layer...</option>
+                </select>
+            </div>
+            
+            <div class="control-group">
+                <label>Reduction Method:</label>
+                <div class="reduction-method">
+                    <input type="radio" id="tsne" name="reduction" value="tsne" checked>
+                    <label for="tsne">t-SNE</label>
+                    <input type="radio" id="umap" name="reduction" value="umap">
+                    <label for="umap">UMAP</label>
+                </div>
+            </div>
+            
+            <button id="load-data">Load Visualization</button>
+            <button id="animate-epochs">Animate Epochs</button>
+            <button id="animate-layers">Animate Layers</button>
+        </div>
+        
+        <div class="dataset-info" id="dataset-info" style="display: none;">
+            <div>
+                <span class="metric">Dataset:</span> <span id="current-dataset">-</span>
+            </div>
+            <div>
+                <span class="metric">Epochs:</span> <span id="available-epochs">-</span>
+            </div>
+            <div>
+                <span class="metric">Layers:</span> <span id="available-layers">-</span>
+            </div>
+            <div>
+                <span class="metric">Samples:</span> <span id="sample-count">-</span>
+            </div>
+        </div>
+        
+        <div class="visualization-container">
+            <div class="viz-panel">
+                <div class="viz-title">T1: Epoch Evolution</div>
+                <div class="viz-subtitle">Explore how representations change across training epochs</div>
+                <div class="viz-content" id="epoch-viz">
+                    <div class="loading">Select a dataset and layer to view epoch evolution</div>
+                </div>
+                <div class="animation-controls">
+                    <button id="play-epoch">Play</button>
+                    <button id="pause-epoch">Pause</button>
+                    <div class="progress-bar">
+                        <div class="progress-fill" id="epoch-progress"></div>
+                    </div>
+                    <span id="epoch-counter">0/0</span>
+                </div>
+            </div>
+            
+            <div class="viz-panel">
+                <div class="viz-title">T2: Layer Evolution</div>
+                <div class="viz-subtitle">Explore how different layers learn different features</div>
+                <div class="viz-content" id="layer-viz">
+                    <div class="loading">Select a dataset and epoch to view layer evolution</div>
+                </div>
+                <div class="animation-controls">
+                    <button id="play-layer">Play</button>
+                    <button id="pause-layer">Pause</button>
+                    <div class="progress-bar">
+                        <div class="progress-fill" id="layer-progress"></div>
+                    </div>
+                    <span id="layer-counter">0/0</span>
+                </div>
+            </div>
+        </div>
+        
+        <div class="legend" id="legend">
+            <!-- Legend will be populated dynamically -->
+        </div>
+    </div>
+    
+    <script src="/static/visualization.js"></script>
+</body>
+</html> 
